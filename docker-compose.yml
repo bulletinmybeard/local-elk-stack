@@ -1,0 +1,125 @@
+version: '3'
+services:
+  elasticsearch:
+    container_name: elasticsearch
+    image: arm64v8/elasticsearch:7.17.10
+    environment:
+      - discovery.type=single-node
+      - PIPELINE_WORKERS=4
+      - LOG_LEVEL=debug
+      - MONITORING_ENABLED=enabled
+    user: root
+    restart: unless-stopped
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      elk:
+        ipv4_address: 172.30.0.2
+
+  kibana:
+    container_name: kibana
+    build:
+      context: ./docker/kibana
+      dockerfile: Dockerfile
+      args:
+        KIBANA_VERSION: "7.17.10"
+    environment:
+      - elasticsearch.hosts=elasticsearch:9200
+    restart: unless-stopped
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+      - ./docker/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+    ports:
+      - "5601:5601"
+    networks:
+      elk:
+        ipv4_address: 172.30.0.3
+    depends_on:
+      - elasticsearch
+
+  logstash:
+    container_name: logstash
+    build:
+      context: ./docker/logstash
+      dockerfile: Dockerfile
+      args:
+        LOGSTASH_VERSION: "7.17.10"
+    user: root
+    restart: unless-stopped
+    environment:
+      - LS_OPTS=--config.reload.automatic
+      - SOME_HOST_API_KEY=${SOME_HOST_API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - logstash_data:/usr/share/logstash/data
+      - ./docker/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+# NOTE: Comment back in the following two lines to test the pipelines
+#      - ./docker/logstash/config/pipelines.yml:/usr/share/logstash/config/pipelines.yml
+#      - ./docker/logstash/pipeline:/usr/share/logstash/pipeline
+      - ./docker/logstash/config/startup.options:/usr/share/logstash/config/startup.options
+    ports:
+      - "5001:5000"
+      - "5044:5044"
+      - "12201:12201"
+      - "12201:12201/udp"
+    networks:
+      elk:
+        ipv4_address: 172.30.0.4
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - elasticsearch
+
+  fluentd:
+    container_name: fluentd
+    build:
+      context: ./docker/fluentd
+      dockerfile: Dockerfile
+      args:
+        FLUENTD_VERSION: "1.16-1"
+        GEM_ELASTICSEARCH_VERSION: "7.17.10"
+        GEM_FLUENT_PLUGIN_ELASTICSEARCH_VERSION: "5.3.0"
+    user: root
+    restart: unless-stopped
+    ports:
+      - "24224:24224"
+    volumes:
+      - ./docker/fluentd/elasticsearch-fluent.conf:/fluentd/etc/fluent.conf
+      - ./docker/fluentd/filters:/fluentd/etc/filters
+      - ./docker/fluentd/filters_dev:/fluentd/etc/filters_dev
+    networks:
+      elk:
+        ipv4_address: 172.30.0.5
+    profiles:
+      - fluentd
+
+  backup:
+    container_name: backup
+    image: busybox
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+      - kibana_data:/usr/share/kibana/data
+      - logstash_data:/usr/share/logstash/data
+      - ./backup:/backup
+    command: sh ./backup/volume_backups.sh
+    restart: "no"
+    profiles:
+      - backup
+
+volumes:
+  elasticsearch_data:
+  logstash_data:
+  kibana_data:
+
+networks:
+  elk:
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+          gateway: 172.30.0.1

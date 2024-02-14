@@ -1,0 +1,12 @@
+# Environment
+.env
+
+# Editors
+.idea
+.DS_Store
+
+# Backup
+backup/*
+!backup/volume_backups.sh
+
+data

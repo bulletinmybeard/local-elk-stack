@@ -1,0 +1,10 @@
+# NOTE: This will eun all pipelines in `/usr/share/logstash/pipeline`
+#- pipeline.id: main
+#  path.config: "/usr/share/logstash/pipeline"
+
+#- pipeline.id: fluentd_logger
+#  path.config: "/usr/share/logstash/pipeline/fluentd.conf"
+
+- pipeline.id: http_poller
+  path.config: "/usr/share/logstash/pipeline/http_poller.conf"
+
